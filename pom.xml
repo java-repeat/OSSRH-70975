@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.example.otel</groupId>
+  <artifactId>aws-otel-spring-boot-starter</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>AWS OpenTelemetry Spring Boot Starter</name>
+  <description>
+    Adds AWS resource attributes, AWS SDK v2 tracing and an optional X-Ray propagator
+    on top of Spring Boot's own spring-boot-starter-opentelemetry.
+  </description>
+
+  <properties>
+    <java.version>17</java.version>
+    <maven.compiler.release>17</maven.compiler.release>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+    <spring-boot.version>4.2.0-RC1</spring-boot.version>
+    <otel-instrumentation.version>2.33.0</otel-instrumentation.version>
+    <otel-contrib.version>1.61.0-alpha</otel-contrib.version>
+    <aws-sdk.version>2.57.3</aws-sdk.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <!-- Import the OTel instrumentation BOM BEFORE Spring Boot's so OTel versions line up -->
+      <dependency>
+        <groupId>io.opentelemetry.instrumentation</groupId>
+        <artifactId>opentelemetry-instrumentation-bom-alpha</artifactId>
+        <version>${otel-instrumentation.version}-alpha</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-dependencies</artifactId>
+        <version>${spring-boot.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+      <dependency>
+        <groupId>software.amazon.awssdk</groupId>
+        <artifactId>bom</artifactId>
+        <version>${aws-sdk.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Boot owns the SDK, sampling, propagation and OTLP export -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-opentelemetry</artifactId>
+    </dependency>
+
+    <!-- AWS resource detectors: Beanstalk, EC2, ECS, EKS, Lambda -->
+    <dependency>
+      <groupId>io.opentelemetry.contrib</groupId>
+      <artifactId>opentelemetry-aws-resources</artifactId>
+      <version>${otel-contrib.version}</version>
+    </dependency>
+
+    <!-- Optional X-Ray header propagation -->
+    <dependency>
+      <groupId>io.opentelemetry.contrib</groupId>
+      <artifactId>opentelemetry-aws-xray-propagator</artifactId>
+      <version>${otel-contrib.version}</version>
+    </dependency>
+
+    <!-- AWS SDK v2 library instrumentation (NOT the -autoconfigure artifact: that one reads
+         GlobalOpenTelemetry once per JVM and Spring Boot never sets the global) -->
+    <dependency>
+      <groupId>io.opentelemetry.instrumentation</groupId>
+      <artifactId>opentelemetry-aws-sdk-2.2</artifactId>
+    </dependency>
+
+    <!-- Provided by the app; the starter only activates when the AWS SDK is present -->
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>sdk-core</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-configuration-processor</artifactId>
+      <optional>true</optional>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <!-- End-to-end trace test: a real web app calling a fake S3 and exporting to a fake collector -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-webmvc</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>s3</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>software.amazon.awssdk</groupId>
+      <artifactId>url-connection-client</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <parameters>true</parameters>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
