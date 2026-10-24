@@ -49,6 +49,18 @@ public final class AwsOtelAutoConfiguration {
 			return new AwsResourcePostProcessor(detector);
 		}
 
+		@Configuration(proxyBeanMethods = false)
+		@ConditionalOnClass(name = "io.micrometer.registry.otlp.OtlpConfig")
+		static class OtlpMetricsResourceConfiguration {
+
+			@Bean
+			static AwsOtlpMetricsPostProcessor awsOtlpMetricsPostProcessor(
+					ObjectProvider<AwsResourceDetector> detector) {
+				return new AwsOtlpMetricsPostProcessor(detector);
+			}
+
+		}
+
 	}
 
 	@Configuration(proxyBeanMethods = false)

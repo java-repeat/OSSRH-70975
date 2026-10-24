@@ -6,7 +6,8 @@ this starter only plugs into the beans Boot already creates.
 
 | Concern | How | Why this way |
 |---|---|---|
-| AWS resource attributes | `BeanPostProcessor` merges detected attributes into Boot's `Resource` bean | Replacing the bean would drop Boot's `OTEL_RESOURCE_ATTRIBUTES` / `management.opentelemetry.resource-attributes` merging |
+| AWS resource attributes (traces) | `BeanPostProcessor` merges detected attributes into Boot's `Resource` bean | Replacing the bean would drop Boot's `OTEL_RESOURCE_ATTRIBUTES` / `management.opentelemetry.resource-attributes` merging |
+| AWS resource attributes (metrics) | `BeanPostProcessor` wraps Boot's `OtlpConfig` bean so `resourceAttributes()` includes them | Boot's Micrometer OTLP registry never reads the `Resource` bean, so without this metrics carry only `service.name` |
 | AWS SDK v2 spans | Global SPI interceptor (`LazyOtelAwsInterceptor`) bound to Boot's `OpenTelemetry` bean | Traces every client, including ones built inside libraries, with no `GlobalOpenTelemetry` and no startup-ordering trap |
 | X-Ray headers (opt-in) | Extra `TextMapPropagator` bean | Boot composes every `TextMapPropagator` bean into `ContextPropagators` |
 
@@ -73,6 +74,11 @@ incoming HTTP request), because Boot's Micrometer bridge uses the OpenTelemetry 
 - **X-Ray order:** this auto-configuration runs after Boot's, so the X-Ray propagator is
   composed last. On extract the last propagator wins, so `X-Amzn-Trace-Id` takes precedence
   when both headers arrive. Outgoing calls carry both.
+- **AWS SDK calls always send `X-Amzn-Trace-Id`:** the AWS SDK instrumentation injects it
+  itself, whatever `aws.otel.xray-propagator.enabled` says. That property only changes
+  Boot's own propagation (incoming requests and non-AWS HTTP clients).
+- **Metrics resource:** Micrometer's resource attributes are strings, so array-valued AWS
+  attributes are exported as comma-separated values.
 - **Lambda `Invoke` context:** the AWS SDK instrumentation injects trace context into a
   Lambda `Invoke` client context using `GlobalOpenTelemetry.getPropagators()`, not the
   instance it was built with. Without a global, that injection is a no-op (the span is
@@ -81,6 +87,21 @@ incoming HTTP request), because Boot's Micrometer bridge uses the OpenTelemetry 
   global very early, accepting the ordering caveats.
 - **SQS producer/consumer links** need `AwsSdkTelemetry#wrap(SqsClient)` on top of the
   interceptor; add a `BeanPostProcessor` for `SqsClient` beans if you need them.
+
+## Verifying with a local collector
+
+`mvn verify` runs the unit tests and an end-to-end test against fakes. To check what a real
+OpenTelemetry Collector receives, run (needs Go; the collector is built on first run):
+
+```sh
+./local-collector/verify.sh
+```
+
+It starts a collector on `127.0.0.1:4318` with the debug and file exporters, runs
+`LocalCollectorTests` (a web app whose request calls S3), and asserts the collector got
+the server and `S3.ListBuckets` spans with the right parent/child links and attributes,
+and AWS resource attributes on both traces and metrics. Output is left in
+`local-collector/target/out` (`traces.jsonl`, `metrics.jsonl`, `collector.log`).
 
 ## Verified against
 

@@ -1,0 +1,27 @@
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 127.0.0.1:4318
+
+exporters:
+  debug:
+    verbosity: detailed
+  file/traces:
+    path: ${env:OUT_DIR}/traces.jsonl
+    flush_interval: 100ms
+  file/metrics:
+    path: ${env:OUT_DIR}/metrics.jsonl
+    flush_interval: 100ms
+
+service:
+  telemetry:
+    metrics:
+      level: none
+  pipelines:
+    traces:
+      receivers: [otlp]
+      exporters: [debug, file/traces]
+    metrics:
+      receivers: [otlp]
+      exporters: [debug, file/metrics]

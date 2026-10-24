@@ -1,0 +1,11 @@
+# OpenTelemetry Collector Builder manifest: the smallest collector that can receive the
+# starter's OTLP/HTTP export and write it to disk (file) and stdout (debug).
+dist:
+  name: otelcol-local
+  description: Local collector for verifying aws-otel-spring-boot-starter
+  output_path: ./target/dist
+receivers:
+  - gomod: go.opentelemetry.io/collector/receiver/otlpreceiver v0.163.0
+exporters:
+  - gomod: go.opentelemetry.io/collector/exporter/debugexporter v0.163.0
+  - gomod: github.com/open-telemetry/opentelemetry-collector-contrib/exporter/fileexporter v0.163.0

@@ -3,6 +3,8 @@ package com.example.otel.aws;
 import java.util.ArrayList;
 import java.util.List;
 
+import io.micrometer.registry.otlp.OtlpConfig;
+import io.micrometer.registry.otlp.OtlpMeterRegistry;
 import io.opentelemetry.api.common.AttributeKey;
 import io.opentelemetry.contrib.awsxray.propagator.AwsXrayPropagator;
 import io.opentelemetry.sdk.resources.Resource;
@@ -18,6 +20,8 @@ import software.amazon.awssdk.http.SdkHttpMethod;
 import software.amazon.awssdk.http.SdkHttpRequest;
 
 import org.springframework.boot.autoconfigure.AutoConfigurations;
+import org.springframework.boot.micrometer.metrics.autoconfigure.MetricsAutoConfiguration;
+import org.springframework.boot.micrometer.metrics.autoconfigure.export.otlp.OtlpMetricsExportAutoConfiguration;
 import org.springframework.boot.opentelemetry.autoconfigure.OpenTelemetrySdkAutoConfiguration;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 
@@ -76,6 +80,34 @@ class AwsOtelAutoConfigurationTests {
 		this.runner.withPropertyValues("aws.otel.resources.enabled=false").run((context) -> {
 			assertThat(context.getBean(Resource.class).getAttribute(CLOUD_PROVIDER)).isNull();
 		});
+	}
+
+	@Test
+	void mergesAwsAttributesIntoBootsOtlpMetricsResource() {
+		this.runner.withConfiguration(AutoConfigurations.of(MetricsAutoConfiguration.class,
+				OtlpMetricsExportAutoConfiguration.class))
+			.withPropertyValues("spring.application.name=orders",
+					"management.opentelemetry.resource-attributes.cloud.region=eu-west-1",
+					"management.otlp.metrics.export.url=http://collector:4318/v1/metrics")
+			.run((context) -> {
+				OtlpConfig config = context.getBean(OtlpConfig.class);
+				assertThat(config.resourceAttributes()).containsEntry("cloud.provider", "aws")
+					// Boot/user configuration wins over detection on conflict
+					.containsEntry("cloud.region", "eu-west-1")
+					.containsEntry("service.name", "orders");
+				// Everything else still comes from Boot's bean
+				assertThat(config.url()).isEqualTo("http://collector:4318/v1/metrics");
+				assertThat(context.getBean(OtlpMeterRegistry.class)).isNotNull();
+			});
+	}
+
+	@Test
+	void metricsResourceDetectionCanBeDisabled() {
+		this.runner.withConfiguration(AutoConfigurations.of(MetricsAutoConfiguration.class,
+				OtlpMetricsExportAutoConfiguration.class))
+			.withPropertyValues("aws.otel.resources.enabled=false")
+			.run((context) -> assertThat(context.getBean(OtlpConfig.class).resourceAttributes())
+				.doesNotContainKey("cloud.provider"));
 	}
 
 	@Test

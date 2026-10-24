@@ -79,6 +79,14 @@
       <artifactId>opentelemetry-aws-sdk-2.2</artifactId>
     </dependency>
 
+    <!-- Boot's OTLP metrics registry (runtime scope in Boot's starter); needed to compile the
+         post-processor that adds AWS attributes to the metrics resource -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-otlp</artifactId>
+      <optional>true</optional>
+    </dependency>
+
     <!-- Provided by the app; the starter only activates when the AWS SDK is present -->
     <dependency>
       <groupId>software.amazon.awssdk</groupId>

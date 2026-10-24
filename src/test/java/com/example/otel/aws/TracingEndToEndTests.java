@@ -56,17 +56,9 @@ class TracingEndToEndTests {
 
 	private static final AttributeKey<String> SERVICE_NAME = AttributeKey.stringKey("service.name");
 
-	private static final String LIST_BUCKETS = """
-			<?xml version="1.0" encoding="UTF-8"?>
-			<ListAllMyBucketsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">\
-			<Owner><ID>owner</ID></Owner><Buckets><Bucket><Name>b1</Name></Bucket></Buckets>\
-			</ListAllMyBucketsResult>""";
-
-	private static HttpServer fakeS3;
+	private static FakeS3 fakeS3;
 
 	private static HttpServer fakeCollector;
-
-	private static final List<Map<String, List<String>>> s3RequestHeaders = new CopyOnWriteArrayList<>();
 
 	private static final List<String> collectorPaths = new CopyOnWriteArrayList<>();
 
@@ -80,14 +72,7 @@ class TracingEndToEndTests {
 
 	@BeforeAll
 	static void startFakes() throws IOException {
-		fakeS3 = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
-		fakeS3.createContext("/", (exchange) -> {
-			s3RequestHeaders.add(Map.copyOf(exchange.getRequestHeaders()));
-			exchange.getRequestBody().readAllBytes();
-			exchange.getResponseHeaders().add("Content-Type", "application/xml");
-			respond(exchange, LIST_BUCKETS.getBytes(StandardCharsets.UTF_8));
-		});
-		fakeS3.start();
+		fakeS3 = FakeS3.start();
 		fakeCollector = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		fakeCollector.createContext("/", (exchange) -> {
 			collectorPaths.add(exchange.getRequestMethod() + " " + exchange.getRequestURI().getPath());
@@ -100,13 +85,13 @@ class TracingEndToEndTests {
 
 	@AfterAll
 	static void stopFakes() {
-		fakeS3.stop(0);
+		fakeS3.close();
 		fakeCollector.stop(0);
 	}
 
 	@BeforeEach
 	void startApp() {
-		s3RequestHeaders.clear();
+		fakeS3.requestHeaders().clear();
 		collectorPaths.clear();
 		collectorBodies.clear();
 		this.context = new SpringApplicationBuilder(App.class).web(WebApplicationType.SERVLET)
@@ -114,7 +99,7 @@ class TracingEndToEndTests {
 					"management.tracing.sampling.probability=1.0",
 					"management.opentelemetry.otlp.endpoint=http://127.0.0.1:" + fakeCollector.getAddress().getPort(),
 					"aws.otel.xray-propagator.enabled=true",
-					"fake.s3.endpoint=http://127.0.0.1:" + fakeS3.getAddress().getPort())
+					"fake.s3.endpoint=" + fakeS3.endpoint())
 			.run();
 		this.spans = this.context.getBean(InMemorySpanExporter.class);
 		this.port = this.context.getEnvironment().getRequiredProperty("local.server.port", Integer.class);
@@ -147,8 +132,8 @@ class TracingEndToEndTests {
 		assertThat(resource.getAttribute(SERVICE_NAME)).isEqualTo("orders");
 
 		// The instrumentation puts X-Ray context on the S3 request, parented by the S3 span
-		assertThat(s3RequestHeaders).hasSize(1);
-		assertThat(header(s3RequestHeaders.get(0), "X-amzn-trace-id"))
+		assertThat(fakeS3.requestHeaders()).hasSize(1);
+		assertThat(fakeS3.header(0, "X-amzn-trace-id"))
 			.isEqualTo("Root=1-4bf92f35-77b34da6a3ce929d0e0e4736;Parent=" + s3.getSpanId() + ";Sampled=1");
 
 		// Boot's OTLP exporter ships the same trace to the collector
@@ -202,15 +187,6 @@ class TracingEndToEndTests {
 	private List<SpanData> flushed() {
 		this.context.getBean(SdkTracerProvider.class).forceFlush().join(5, java.util.concurrent.TimeUnit.SECONDS);
 		return this.spans.getFinishedSpanItems();
-	}
-
-	private static String header(Map<String, List<String>> headers, String name) {
-		return headers.entrySet()
-			.stream()
-			.filter((entry) -> entry.getKey().equalsIgnoreCase(name))
-			.map((entry) -> entry.getValue().get(0))
-			.findFirst()
-			.orElse(null);
 	}
 
 	private static void respond(HttpExchange exchange, byte[] body) throws IOException {
