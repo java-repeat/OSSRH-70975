@@ -14,6 +14,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
+import org.springframework.core.env.Environment;
 
 /**
  * Plugs AWS pieces into the beans Spring Boot's OpenTelemetry support already creates.
@@ -38,15 +40,30 @@ public final class AwsOtelAutoConfiguration {
 	static class ResourceConfiguration {
 
 		@Bean
-		@ConditionalOnMissingBean
-		AwsResourceDetector awsResourceDetector() {
-			return AwsResourceDetector.contrib();
+		@Order(ResourceDetector.AWS_ORDER)
+		@ConditionalOnMissingBean(name = "awsResourceDetector")
+		@ConditionalOnClass(name = "io.opentelemetry.contrib.aws.resource.Ec2Resource")
+		ResourceDetector awsResourceDetector() {
+			return ResourceDetector.aws();
+		}
+
+		@Bean
+		@Order(ResourceDetector.RESOURCE_PROVIDERS_ORDER)
+		@ConditionalOnMissingBean(name = "resourceProviderDetector")
+		ResourceDetector resourceProviderDetector(Environment environment) {
+			return new ResourceProviderDetector(new EnvironmentConfigProperties(environment),
+					AwsOtelAutoConfiguration.class.getClassLoader());
+		}
+
+		@Bean
+		DetectedResource detectedResource(ObjectProvider<ResourceDetector> detectors) {
+			return new DetectedResource(detectors);
 		}
 
 		// static: BeanPostProcessors must not force early init of their configuration class
 		@Bean
-		static AwsResourcePostProcessor awsResourcePostProcessor(ObjectProvider<AwsResourceDetector> detector) {
-			return new AwsResourcePostProcessor(detector);
+		static AwsResourcePostProcessor awsResourcePostProcessor(ObjectProvider<DetectedResource> detected) {
+			return new AwsResourcePostProcessor(detected);
 		}
 
 		@Configuration(proxyBeanMethods = false)
@@ -54,9 +71,8 @@ public final class AwsOtelAutoConfiguration {
 		static class OtlpMetricsResourceConfiguration {
 
 			@Bean
-			static AwsOtlpMetricsPostProcessor awsOtlpMetricsPostProcessor(
-					ObjectProvider<AwsResourceDetector> detector) {
-				return new AwsOtlpMetricsPostProcessor(detector);
+			static AwsOtlpMetricsPostProcessor awsOtlpMetricsPostProcessor(ObjectProvider<DetectedResource> detected) {
+				return new AwsOtlpMetricsPostProcessor(detected);
 			}
 
 		}

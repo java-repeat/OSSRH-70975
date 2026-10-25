@@ -6,8 +6,8 @@ this starter only plugs into the beans Boot already creates.
 
 | Concern | How | Why this way |
 |---|---|---|
-| AWS resource attributes (traces) | `BeanPostProcessor` merges detected attributes into Boot's `Resource` bean | Replacing the bean would drop Boot's `OTEL_RESOURCE_ATTRIBUTES` / `management.opentelemetry.resource-attributes` merging |
-| AWS resource attributes (metrics) | `BeanPostProcessor` wraps Boot's `OtlpConfig` bean so `resourceAttributes()` includes them | Boot's Micrometer OTLP registry never reads the `Resource` bean, so without this metrics carry only `service.name` |
+| Resource attributes (traces): AWS built in, plus other clouds and your own | `BeanPostProcessor` merges detected attributes into Boot's `Resource` bean | Replacing the bean would drop Boot's `OTEL_RESOURCE_ATTRIBUTES` / `management.opentelemetry.resource-attributes` merging |
+| Resource attributes (metrics) | `BeanPostProcessor` wraps Boot's `OtlpConfig` bean so `resourceAttributes()` includes them | Boot's Micrometer OTLP registry never reads the `Resource` bean, so without this metrics carry only `service.name` |
 | AWS SDK v2 spans | Global SPI interceptor (`LazyOtelAwsInterceptor`) bound to Boot's `OpenTelemetry` bean | Traces every client, including ones built inside libraries, with no `GlobalOpenTelemetry` and no startup-ordering trap |
 | X-Ray headers (opt-in) | Extra `TextMapPropagator` bean | Boot composes every `TextMapPropagator` bean into `ContextPropagators` |
 
@@ -57,6 +57,57 @@ S3Client s3() {
 AWS SDK spans become children of the current Micrometer observation (for example the
 incoming HTTP request), because Boot's Micrometer bridge uses the OpenTelemetry `Context`.
 
+## Resource detection: other clouds and your own detectors
+
+Detection runs once at startup. Its result goes on traces and metrics, and Boot's own
+configuration (`spring.application.name`, `OTEL_RESOURCE_ATTRIBUTES`,
+`management.opentelemetry.resource-attributes`) always wins over anything detected.
+Detectors run in this order, and a later one wins on a conflicting attribute:
+
+| Order | Detector | What it does |
+|---|---|---|
+| `-200` (`ResourceDetector.AWS_ORDER`) | `awsResourceDetector` | Merges the contrib Beanstalk, EC2, ECS, EKS and Lambda detectors |
+| `-100` (`ResourceDetector.RESOURCE_PROVIDERS_ORDER`) | `resourceProviderDetector` | Every OpenTelemetry `ResourceProvider` on the classpath (`META-INF/services`) |
+| last (no `@Order`) | your `ResourceDetector` beans | Whatever you return |
+
+**Another cloud:** add its contrib jar; nothing to wire. For example
+`io.opentelemetry.contrib:opentelemetry-gcp-resources` or `opentelemetry-azure-resources`.
+The contrib cloud providers skip themselves once `cloud.provider` is set, so on AWS they
+never probe their metadata endpoints.
+
+**Your own, as a Spring bean:**
+
+```java
+@Bean
+ResourceDetector teamDetector() {
+  return () -> Resource.builder().put("team", "payments").build();
+}
+```
+
+Override `detect(Resource detected)` instead to see what earlier detectors found, for
+example to skip work once `cloud.provider` is known.
+
+**Your own, as an OpenTelemetry `ResourceProvider`:** implement
+`io.opentelemetry.sdk.autoconfigure.spi.ResourceProvider` and list it in
+`META-INF/services/io.opentelemetry.sdk.autoconfigure.spi.ResourceProvider`. The same class
+works with the OpenTelemetry Java agent. Its `ConfigProperties` reads `otel.*` keys from
+the Spring `Environment`, so `OTEL_*` environment variables and `application.yml` both work.
+
+**Filtering classpath providers** uses OpenTelemetry's standard keys, with class names:
+
+```yaml
+otel:
+  java:
+    disabled:
+      resource:
+        providers: io.opentelemetry.contrib.gcp.resource.GCPResourceProvider
+    # or allow-list: otel.java.enabled.resource.providers
+```
+
+**Replacing a built-in:** declare a bean named `awsResourceDetector` or
+`resourceProviderDetector`. Give it the same `@Order` if it should keep its place; without
+one it runs last.
+
 ## Design notes
 
 - **Why not `opentelemetry-aws-sdk-2.2-autoconfigure`?** Its telemetry is a JVM-wide
@@ -66,11 +117,16 @@ incoming HTTP request), because Boot's Micrometer bridge uses the OpenTelemetry 
 - **Calls during startup:** AWS calls made before Boot's `OpenTelemetry` bean exists pass
   through untraced. Binding happens the moment that bean is initialized. Each call pins its
   delegate in `beforeExecution`, so a call is never half-instrumented.
-- **Detector order** mirrors OpenTelemetry's declarative `aws` detector (Beanstalk, EC2,
-  ECS, EKS, Lambda), so the more specific platform wins on overlapping attributes.
+- **AWS detector order** mirrors OpenTelemetry's declarative `aws` detector (Beanstalk,
+  EC2, ECS, EKS, Lambda), so the more specific platform wins on overlapping attributes.
+  It merges all five on purpose: with the contrib `ResourceProvider`s the first match stops
+  the rest, so ECS on EC2 would keep only the EC2 attributes.
 - **Startup latency off AWS:** the EC2 detector probes IMDS. Set
-  `aws.otel.resources.enabled=false` locally, or declare your own `AwsResourceDetector`
-  bean (for example `Resource::empty`).
+  `aws.otel.resources.enabled=false` locally, or replace the `awsResourceDetector` bean
+  (for example with `Resource::empty`).
+- **`ConditionalResourceProvider`** is in the SPI's `internal` package. The contrib
+  detectors and the SDK both use it, so the starter does too, but it may change between
+  OpenTelemetry releases.
 - **X-Ray order:** this auto-configuration runs after Boot's, so the X-Ray propagator is
   composed last. On extract the last propagator wins, so `X-Amzn-Trace-Id` takes precedence
   when both headers arrive. Outgoing calls carry both.

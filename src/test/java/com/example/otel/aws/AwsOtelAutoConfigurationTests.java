@@ -37,7 +37,7 @@ class AwsOtelAutoConfigurationTests {
 	private static final AttributeKey<String> SERVICE_NAME = AttributeKey.stringKey("service.name");
 
 	// Fake AWS detection so tests never call IMDS
-	private static final AwsResourceDetector FAKE_AWS = () -> Resource.builder()
+	private static final ResourceDetector FAKE_AWS = () -> Resource.builder()
 		.put(CLOUD_PROVIDER, "aws")
 		.put(CLOUD_REGION, "us-east-1")
 		.put(SERVICE_NAME, "from-aws-should-lose")
@@ -46,7 +46,7 @@ class AwsOtelAutoConfigurationTests {
 	private final ApplicationContextRunner runner = new ApplicationContextRunner()
 		.withConfiguration(
 				AutoConfigurations.of(OpenTelemetrySdkAutoConfiguration.class, AwsOtelAutoConfiguration.class))
-		.withBean(AwsResourceDetector.class, () -> FAKE_AWS);
+		.withBean("awsResourceDetector", ResourceDetector.class, () -> FAKE_AWS);
 
 	@AfterEach
 	void reset() {

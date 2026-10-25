@@ -207,7 +207,8 @@ class TracingEndToEndTests {
 		}
 
 		@Bean
-		AwsResourceDetector fakeAwsResourceDetector() {
+		@org.springframework.core.annotation.Order(ResourceDetector.AWS_ORDER)
+		ResourceDetector awsResourceDetector() {
 			return () -> Resource.builder().put(CLOUD_PROVIDER, "aws").put(SERVICE_NAME, "from-aws").build();
 		}
 

@@ -15,44 +15,43 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.config.BeanPostProcessor;
 
 /**
- * Merges AWS-detected attributes into the resource of Boot's OTLP metrics export.
+ * Merges detected attributes into the resource of Boot's OTLP metrics export.
  *
  * <p>
  * Boot exports metrics through Micrometer's {@code OtlpMeterRegistry}, which never sees the
  * OpenTelemetry {@link Resource} bean: it takes its resource attributes from
  * {@link OtlpConfig#resourceAttributes()}, which Boot fills from {@code OTEL_*} variables
  * and {@code management.opentelemetry.resource-attributes} only. Without this, spans carry
- * the AWS attributes and metrics don't, so the two can't be joined on {@code cloud.*} or
+ * the detected attributes and metrics don't, so the two can't be joined on {@code cloud.*} or
  * {@code host.id}.
  *
  * <p>
  * Boot's {@code OtlpConfig} bean is wrapped rather than replaced, for the same reason as
  * {@link AwsResourcePostProcessor}. The wrapper is a proxy so every other setting, including
- * ones added to {@code OtlpConfig} later, still comes from Boot's bean. AWS attributes go
- * first so that anything Boot or the user configured wins on conflict.
+ * ones added to {@code OtlpConfig} later, still comes from Boot's bean. Detected attributes
+ * go first so that anything Boot or the user configured wins on conflict.
  */
 class AwsOtlpMetricsPostProcessor implements BeanPostProcessor {
 
-	private final ObjectProvider<AwsResourceDetector> detector;
+	private final ObjectProvider<DetectedResource> detected;
 
-	AwsOtlpMetricsPostProcessor(ObjectProvider<AwsResourceDetector> detector) {
-		this.detector = detector;
+	AwsOtlpMetricsPostProcessor(ObjectProvider<DetectedResource> detected) {
+		this.detected = detected;
 	}
 
 	@Override
 	public Object postProcessAfterInitialization(Object bean, String beanName) {
 		if (bean instanceof OtlpConfig bootConfig) {
-			AwsResourceDetector awsDetector = this.detector.getIfAvailable(AwsResourceDetector::contrib);
-			return withAwsAttributes(bootConfig, toAttributes(awsDetector.detect()));
+			return withDetectedAttributes(bootConfig, toAttributes(this.detected.getObject().get()));
 		}
 		return bean;
 	}
 
-	private static OtlpConfig withAwsAttributes(OtlpConfig bootConfig, Map<String, String> aws) {
+	private static OtlpConfig withDetectedAttributes(OtlpConfig bootConfig, Map<String, String> detected) {
 		return (OtlpConfig) Proxy.newProxyInstance(OtlpConfig.class.getClassLoader(),
 				new Class<?>[] { OtlpConfig.class }, (proxy, method, args) -> {
 					if (method.getName().equals("resourceAttributes") && method.getParameterCount() == 0) {
-						Map<String, String> merged = new LinkedHashMap<>(aws);
+						Map<String, String> merged = new LinkedHashMap<>(detected);
 						merged.putAll(bootConfig.resourceAttributes());
 						return Collections.unmodifiableMap(merged);
 					}
@@ -65,7 +64,7 @@ class AwsOtlpMetricsPostProcessor implements BeanPostProcessor {
 				});
 	}
 
-	// Micrometer's resource attributes are strings; OTLP arrays become comma-separated values
+	// Micrometer's resource attributes are strings; array values become comma-separated
 	private static Map<String, String> toAttributes(Resource resource) {
 		Map<String, String> attributes = new LinkedHashMap<>();
 		resource.getAttributes().forEach((key, value) -> attributes.put(key.getKey(), (value instanceof List<?> list)

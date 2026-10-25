@@ -65,6 +65,13 @@
       <version>${otel-contrib.version}</version>
     </dependency>
 
+    <!-- OpenTelemetry's ResourceProvider SPI, used to discover detectors on the classpath
+         (contrib only declares it at compile time) -->
+    <dependency>
+      <groupId>io.opentelemetry</groupId>
+      <artifactId>opentelemetry-sdk-extension-autoconfigure-spi</artifactId>
+    </dependency>
+
     <!-- Optional X-Ray header propagation -->
     <dependency>
       <groupId>io.opentelemetry.contrib</groupId>
@@ -125,6 +132,19 @@
     <dependency>
       <groupId>io.opentelemetry</groupId>
       <artifactId>opentelemetry-sdk-testing</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Other clouds' contrib detectors: discovered from the classpath with no code -->
+    <dependency>
+      <groupId>io.opentelemetry.contrib</groupId>
+      <artifactId>opentelemetry-gcp-resources</artifactId>
+      <version>${otel-contrib.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.opentelemetry.contrib</groupId>
+      <artifactId>opentelemetry-azure-resources</artifactId>
+      <version>${otel-contrib.version}</version>
       <scope>test</scope>
     </dependency>
   </dependencies>
