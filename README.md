@@ -163,3 +163,10 @@ and AWS resource attributes on both traces and metrics. Output is left in
 
 Spring Boot 4.2.0-RC1 source, opentelemetry-java-instrumentation v2.33.0,
 opentelemetry-java-contrib v1.61.0 and AWS SDK for Java v2 (current `ExecutionInterceptor`).
+
+## Other projects in this repo
+
+- [`global-otel-demo`](global-otel-demo/README.md): should Boot publish its `OpenTelemetry`
+  bean as `GlobalOpenTelemetry`? Pros, cons, which libraries use the global, and tests for
+  each claim.
+- `webflux-block-demo`: blocking on `WebClient` inside a WebFlux controller.
