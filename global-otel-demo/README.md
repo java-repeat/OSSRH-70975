@@ -119,8 +119,8 @@ use `install(OpenTelemetry)`.
 | `vertx-opentelemetry` 5.2.3 | `get()` | `OpenTelemetryTracingFactory` no-arg default |
 | `anthropic-java-core` 3.14.0 | `getOrNoop()` | Doesn't lock the global |
 | `opentelemetry-exporter-otlp` / `-zipkin` (used by Boot) | `getOrNoop()` | Exporter self-metrics, read when the exporter is built |
-| `micronaut-tracing-opentelemetry` 8.3.0 | `isSet()`, `get()`, `set` | Micronaut *sets* the global; Boot doesn't |
-| `helidon-tracing-providers-opentelemetry` 27.0.2 | `isSet()`, `set` | Helidon *sets* the global |
+| `micronaut-tracing-opentelemetry` 8.3.0 | `isSet()`, `get()`, `setResultAsGlobal()` | Reuses the global if it is already set (the Java agent); otherwise builds its own SDK and sets it as the global only if `otel.register.global=true` (default `false`) |
+| `helidon-tracing-providers-opentelemetry` 27.0.2 | `isSet()`, `set` | Sets the global by default (`global`, default `true`), unless it is already set |
 | `opentelemetry-sdk` / `-sdk-extension-autoconfigure` | `set` | `buildAndRegisterGlobal()`, `setResultAsGlobal()` |
 | OpenTelemetry Java agent | `set` | Owns the global when present |
 
